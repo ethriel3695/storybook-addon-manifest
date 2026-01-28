@@ -1,64 +1,41 @@
 {
-	"name": "storybook-addon-angular-manifest",
-	"version": "0.0.1",
-	"description": "Storybook addon for Angular component manifest generation with Compodoc integration",
-	"keywords": [
-		"storybook-addon",
-		"angular",
-		"compodoc",
-		"mcp",
-		"ai"
-	],
+	"name": "storybook-manifest-addons",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Monorepo for Storybook manifest addons (Angular, Vue, Svelte, etc.)",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/your-username/storybook-addon-angular-manifest"
+		"url": "https://github.com/your-username/storybook-manifest-addons"
 	},
-	"license": "MIT",
-	"author": "Your Name",
 	"type": "module",
-	"exports": {
-		".": "./dist/index.js",
-		"./preset": "./dist/preset.js",
-		"./package.json": "./package.json"
-	},
-	"main": "./dist/index.js",
-	"types": "./dist/index.d.ts",
-	"files": [
-		"dist/**/*",
-		"README.md",
-		"*.js",
-		"*.d.ts"
-	],
 	"scripts": {
-		"prebuild": "node -e \"fs.rmSync('./dist', { recursive: true, force: true })\"",
-		"build": "tsdown",
-		"dev": "tsdown --watch",
-		"typecheck": "tsc --noEmit",
-		"prepublishOnly": "pnpm build"
-	},
-	"dependencies": {
-		"comment-parser": "^1.4.1",
-		"empathic": "^1.1.0",
-		"es-toolkit": "^1.32.0",
-		"pathe": "^2.0.3"
-	},
-	"peerDependencies": {
-		"storybook": "^8.0.0 || ^9.0.0 || ^10.0.0"
+		"build": "turbo run build",
+		"changeset": "changeset",
+		"check": "turbo run build format lint publint typecheck test:run --continue",
+		"dev": "turbo run dev",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
+		"lint": "oxlint",
+		"publint": "turbo run publint",
+		"release": "turbo run build && pnpm changeset publish",
+		"test": "vitest",
+		"test:run": "vitest run",
+		"turbo": "turbo",
+		"typecheck": "tsc"
 	},
 	"devDependencies": {
+		"@changesets/changelog-github": "^0.5.1",
+		"@changesets/cli": "^2.29.6",
 		"@types/node": "^20.19.0",
-		"storybook": "^9.1.16",
+		"oxlint": "^1.25.0",
+		"prettier": "^3.6.2",
+		"publint": "^0.3.15",
 		"tsdown": "^0.16.4",
-		"typescript": "~5.9.3"
+		"turbo": "^2.6.1",
+		"typescript": "~5.9.3",
+		"vite": "^6.0.0",
+		"vite-tsconfig-paths": "^5.1.4",
+		"vitest": "^4.0.6"
 	},
-	"publishConfig": {
-		"access": "public"
-	},
-	"storybook": {
-		"displayName": "Angular Manifest Generator",
-		"supportedFrameworks": [
-			"@storybook/angular"
-		],
-		"icon": "https://angular.io/assets/images/logos/angular/angular.svg"
-	}
+	"packageManager": "pnpm@10.19.0"
 }

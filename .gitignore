@@ -1,27 +1,14 @@
-# Dependencies
-node_modules/
-
-# Build output
 dist/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS
+node_modules/
 .DS_Store
-Thumbs.db
+.env
+coverage/
+test-report.junit.xml
+
+# Turborepo
+.turbo
 
 # Logs
 *.log
 npm-debug.log*
 pnpm-debug.log*
-
-# Test coverage
-coverage/
-
-# Lock files (use pnpm-lock.yaml)
-package-lock.json
-yarn.lock

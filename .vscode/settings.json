@@ -1,0 +1,5 @@
+{
+	"oxc.enable": true,
+	"editor.defaultFormatter": "esbenp.prettier-vscode",
+	"vitest.disableWorkspaceWarning": true
+}

@@ -1,0 +1,10 @@
+import { defineConfig } from 'tsdown';
+import sharedTsDownConfig from '../../tsdown-shared.config.ts';
+import pkg from './package.json' with { type: 'json' };
+
+const sharedConfig = sharedTsDownConfig(pkg.name);
+
+export default defineConfig({
+	...sharedConfig,
+	entry: ['src/index.ts', 'src/preset.ts'],
+});

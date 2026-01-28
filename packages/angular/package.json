@@ -1,0 +1,62 @@
+{
+	"name": "storybook-addon-angular-manifest",
+	"version": "0.0.1",
+	"description": "Storybook addon for Angular component manifest generation with Compodoc integration",
+	"keywords": [
+		"storybook-addon",
+		"angular",
+		"compodoc",
+		"mcp",
+		"ai"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/your-username/storybook-manifest-addons",
+		"directory": "packages/angular"
+	},
+	"license": "MIT",
+	"author": "Your Name",
+	"type": "module",
+	"exports": {
+		".": "./dist/index.js",
+		"./preset": "./dist/preset.js",
+		"./package.json": "./package.json"
+	},
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist/**/*",
+		"README.md",
+		"*.js",
+		"*.d.ts"
+	],
+	"scripts": {
+		"prebuild": "node -e \"fs.rmSync('./dist', { recursive: true, force: true })\"",
+		"build": "tsdown",
+		"dev": "tsdown --watch",
+		"typecheck": "tsc --noEmit",
+		"publint": "publint"
+	},
+	"dependencies": {
+		"comment-parser": "catalog:",
+		"empathic": "catalog:",
+		"es-toolkit": "catalog:",
+		"pathe": "catalog:"
+	},
+	"peerDependencies": {
+		"storybook": "^8.0.0 || ^9.0.0 || ^10.0.0"
+	},
+	"devDependencies": {
+		"storybook": "catalog:"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"storybook": {
+		"displayName": "Angular Manifest Generator",
+		"supportedFrameworks": [
+			"@storybook/angular"
+		],
+		"icon": "https://angular.io/assets/images/logos/angular/angular.svg"
+	}
+}

@@ -1,21 +1,33 @@
 {
 	"compilerOptions": {
-		"target": "ES2022",
-		"module": "NodeNext",
-		"moduleResolution": "NodeNext",
-		"lib": ["ES2022"],
-		"declaration": true,
-		"declarationMap": true,
-		"sourceMap": true,
-		"strict": true,
+		/* Base Options: */
 		"esModuleInterop": true,
 		"skipLibCheck": true,
-		"forceConsistentCasingInFileNames": true,
+		"target": "es2022",
+		"allowJs": true,
 		"resolveJsonModule": true,
-		"outDir": "./dist",
-		"rootDir": "./src",
-		"types": ["node"]
+		"moduleDetection": "force",
+		"isolatedModules": true,
+		"verbatimModuleSyntax": true,
+
+		/* Strictness */
+		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+
+		/* If NOT transpiling with TypeScript: */
+		"module": "preserve",
+		"noEmit": true,
+
+		"lib": ["es2023", "es2024"],
+
+		// Customization
+		"allowImportingTsExtensions": true,
+
+		// Enable live types for packages
+		"paths": {
+			"@storybook-manifest/angular": ["./packages/angular/src/index.ts"]
+		}
 	},
-	"include": ["src/**/*"],
-	"exclude": ["node_modules", "dist"]
+	"include": ["*.ts"]
 }
