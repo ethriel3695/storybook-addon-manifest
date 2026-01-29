@@ -11,11 +11,11 @@
 	],
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/anthropics/storybook-addon-manifest",
+		"url": "https://github.com/ethriel3695/storybook-addon-manifest",
 		"directory": "packages/angular"
 	},
 	"license": "MIT",
-	"author": "Your Name",
+	"author": "ethriel3695",
 	"type": "module",
 	"exports": {
 		".": "./dist/index.mjs",

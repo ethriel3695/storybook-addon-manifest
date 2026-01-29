@@ -1,11 +1,11 @@
 {
 	"name": "storybook-addon-manifest",
-	"version": "0.0.0",
+	"version": "0.0.1",
 	"private": true,
-	"description": "Monorepo for Storybook manifest addons (Angular, Vue, Svelte, etc.)",
+	"description": "Monorepo for Storybook manifest addons (Angular currently supported)",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/anthropics/storybook-addon-manifest"
+		"url": "https://github.com/ethriel3695/storybook-addon-manifest"
 	},
 	"type": "module",
 	"scripts": {
