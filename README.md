@@ -1,4 +1,4 @@
-# Storybook Manifest Addons
+# Storybook Addon Manifest
 
 A monorepo for Storybook manifest addons that generate component manifests for various frameworks. These addons enable AI-powered tools like [Storybook MCP](https://github.com/storybookjs/mcp) to understand your component libraries.
 

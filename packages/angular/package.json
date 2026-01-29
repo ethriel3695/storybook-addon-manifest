@@ -11,19 +11,19 @@
 	],
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/your-username/storybook-manifest-addons",
+		"url": "https://github.com/anthropics/storybook-addon-manifest",
 		"directory": "packages/angular"
 	},
 	"license": "MIT",
 	"author": "Your Name",
 	"type": "module",
 	"exports": {
-		".": "./dist/index.js",
-		"./preset": "./dist/preset.js",
+		".": "./dist/index.mjs",
+		"./preset": "./dist/preset.mjs",
 		"./package.json": "./package.json"
 	},
-	"main": "./dist/index.js",
-	"types": "./dist/index.d.ts",
+	"main": "./dist/index.mjs",
+	"types": "./dist/index.d.mts",
 	"files": [
 		"dist/**/*",
 		"README.md",

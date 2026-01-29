@@ -1,6 +1,6 @@
 {
 	"$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
-	"changelog": ["@changesets/changelog-github", { "repo": "your-username/storybook-manifest-addons" }],
+	"changelog": ["@changesets/changelog-github", { "repo": "anthropics/storybook-addon-manifest" }],
 	"commit": false,
 	"fixed": [],
 	"linked": [],
