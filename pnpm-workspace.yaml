@@ -2,10 +2,14 @@ packages:
   - packages/*
 
 catalog:
+  '@storybook/addon-mcp': ^0.2.2
+  '@storybook/react': ^10.2.8
+  '@storybook/react-vite': ^10.2.8
+  '@storybook/test': ^8.6.15
   comment-parser: ^1.4.1
   empathic: ^1.1.0
   es-toolkit: ^1.32.0
   pathe: ^2.0.3
-  storybook: ^9.1.16
+  storybook: ^10.2.8
   tsdown: ^0.16.4
   typescript: ~5.9.3
