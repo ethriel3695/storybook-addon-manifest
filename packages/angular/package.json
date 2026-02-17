@@ -38,8 +38,8 @@
 		"publint": "publint"
 	},
 	"dependencies": {
-		"comment-parser": "10.2.8",
-		"empathic": "10.2.8",
+		"comment-parser": "1.4.5",
+		"empathic": "2.0.0",
 		"es-toolkit": "1.44.0",
 		"pathe": "2.0.3"
 	},
