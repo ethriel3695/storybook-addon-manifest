@@ -42,7 +42,10 @@ export {
 } from './compodocReader.js';
 
 // Code snippet generation
-export { generateAngularSnippet } from './generateCodeSnippet.js';
+export {
+	generateAngularSnippet,
+	type GenerateAngularSnippetOptions,
+} from './generateCodeSnippet.js';
 
 // JSDoc utilities
 export { extractJSDocInfo } from './jsdocTags.js';

@@ -1,13 +1,89 @@
+import { loadPreviewOrConfigFile, serverRequire } from 'storybook/internal/common';
 import { extractDescription, loadCsf } from 'storybook/internal/csf-tools';
 import type {
 	DocsIndexEntry,
 	IndexEntry,
 	PresetPropertyFn,
-	StorybookConfigRaw,
 } from 'storybook/internal/types';
 
 import { uniqBy } from 'es-toolkit/array';
 import path from 'pathe';
+
+const SELECTOR_PREFIX_CONFIG_DIR_ENV = 'STORYBOOK_MANIFEST_CONFIG_DIR';
+const DEFAULT_STORYBOOK_CONFIG_DIR = '.storybook';
+
+let cachedSelectorPrefix: string | null = null;
+let selectorPrefixLoaded = false;
+
+function resetSelectorPrefixCache() {
+	cachedSelectorPrefix = null;
+	selectorPrefixLoaded = false;
+}
+
+function readSelectorPrefix(candidate: unknown): string | undefined {
+	if (!candidate || typeof candidate !== 'object') {
+		return undefined;
+	}
+	const value = (candidate as Record<string, unknown>).selectorPrefix;
+	if (typeof value !== 'string') {
+		return undefined;
+	}
+	const normalized = value.trim();
+	return normalized.length > 0 ? normalized : undefined;
+}
+
+async function resolveSelectorPrefix(): Promise<string | undefined> {
+	if (selectorPrefixLoaded) {
+		return cachedSelectorPrefix ?? undefined;
+	}
+
+	selectorPrefixLoaded = true;
+
+	const configDirSetting = process.env[SELECTOR_PREFIX_CONFIG_DIR_ENV];
+	const configDirCandidate =
+		typeof configDirSetting === 'string' && configDirSetting.trim().length > 0
+			? configDirSetting.trim()
+			: DEFAULT_STORYBOOK_CONFIG_DIR;
+	const configDir = path.isAbsolute(configDirCandidate)
+		? configDirCandidate
+		: path.join(process.cwd(), configDirCandidate);
+
+	try {
+		const previewFile = loadPreviewOrConfigFile({ configDir });
+		if (!previewFile) {
+			return undefined;
+		}
+
+		const previewModule = await serverRequire(previewFile);
+		if (!previewModule) {
+			return undefined;
+		}
+
+		const moduleExports = previewModule as Record<string, unknown>;
+		const defaultExport = moduleExports.default as Record<string, unknown> | undefined;
+		const previewParameters =
+			(moduleExports.parameters as Record<string, unknown> | undefined) ??
+			(defaultExport?.parameters as Record<string, unknown> | undefined);
+
+		const prefix =
+			readSelectorPrefix(previewParameters?.['angularManifest']) ??
+			readSelectorPrefix(moduleExports['angularManifest']) ??
+			readSelectorPrefix(defaultExport?.['angularManifest']);
+
+		if (prefix) {
+			cachedSelectorPrefix = prefix;
+			return prefix;
+		}
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.warn(
+			`[storybook-addon-angular-manifest] Unable to read angularManifest selectorPrefix from preview: ${message}`
+		);
+	}
+
+	cachedSelectorPrefix = null;
+	return undefined;
+}
 
 /**
  * Component manifest structure - matches Storybook's internal ComponentManifest
@@ -101,7 +177,8 @@ function extractStories(
 	csf: ReturnType<ReturnType<typeof loadCsf>['parse']>,
 	componentName: string | undefined,
 	manifestEntries: IndexEntry[],
-	compodocDoc: CompodocDocObj | undefined
+	compodocDoc: CompodocDocObj | undefined,
+	selectorPrefix: string | undefined
 ) {
 	const manifestEntryIds = new Set(manifestEntries.map((entry) => entry.id));
 	return Object.entries(csf._stories)
@@ -123,7 +200,8 @@ function extractStories(
 						csf,
 						storyName,
 						componentName,
-						compodocDoc
+						compodocDoc,
+						{ selectorPrefix }
 					),
 					description: finalDescription?.trim(),
 					summary: tags.summary?.[0],
@@ -187,11 +265,21 @@ function generateImportStatement(
  * This generates component manifests for Angular components by reading
  * Compodoc JSON for type information and CSF files for story information.
  */
-export const manifests: PresetPropertyFn<'experimental_manifests'> = async (
+export const manifests = (async (
 	existingManifests: Manifests = {},
-	{ manifestEntries }: { manifestEntries: IndexEntry[] }
+	{ manifestEntries }: { manifestEntries?: IndexEntry[] } = {}
 ) => {
+	const entries = Array.isArray(manifestEntries) ? manifestEntries : [];
+
+	// Some callers (e.g. addon-mcp capability probes) invoke the preset with an
+	// empty manifest list or undefined value to check whether manifests are
+	// supported. Skip generation in those scenarios.
+	if (entries.length === 0) {
+		return existingManifests;
+	}
+
 	invalidateCache();
+	resetSelectorPrefixCache();
 
 	const startPerformance = performance.now();
 
@@ -207,18 +295,31 @@ export const manifests: PresetPropertyFn<'experimental_manifests'> = async (
 		return existingManifests;
 	}
 
+	// Debug logging
+	console.log(
+		`[storybook-addon-angular-manifest] Received ${entries.length} manifest entries`
+	);
+
 	// Filter to unique components (stories only, not docs entries unless attached)
+	const filteredEntries = entries.filter(
+		(entry) =>
+			(entry.type === 'story' &&
+				(entry as unknown as { subtype?: string }).subtype === 'story') ||
+			(entry.type === 'docs' &&
+				entry.tags?.includes(ATTACHED_MDX_TAG) &&
+				(entry as DocsIndexEntry).storiesImports?.length > 0)
+	);
+
+	console.log(
+		`[storybook-addon-angular-manifest] Filtered to ${filteredEntries.length} story entries`
+	);
+
 	const entriesByUniqueComponent = uniqBy(
-		manifestEntries.filter(
-			(entry) =>
-				(entry.type === 'story' &&
-					(entry as unknown as { subtype?: string }).subtype === 'story') ||
-				(entry.type === 'docs' &&
-					entry.tags?.includes(ATTACHED_MDX_TAG) &&
-					(entry as DocsIndexEntry).storiesImports?.length > 0)
-		),
+		filteredEntries,
 		(entry) => entry.id.split('--')[0]
 	);
+
+	const selectorPrefix = await resolveSelectorPrefix();
 
 	const components = entriesByUniqueComponent
 		.map((entry): AngularComponentManifest | undefined => {
@@ -227,13 +328,24 @@ export const manifests: PresetPropertyFn<'experimental_manifests'> = async (
 					entry.type === 'story'
 						? entry.importPath
 						: (entry as DocsIndexEntry).storiesImports[0];
+				if (!storyFilePath) {
+					return undefined;
+				}
 				const absoluteImportPath = path.join(process.cwd(), storyFilePath);
 				const storyFile = cachedReadFileSync(absoluteImportPath, 'utf-8') as string;
 				const csf = loadCsf(storyFile, {
 					makeTitle: (title) => title ?? 'No title',
 				}).parse();
 
-				const componentName = csf._meta?.component;
+				// Extract component name - handle both string and component reference
+				const metaComponent = csf._meta?.component;
+				const componentName =
+					typeof metaComponent === 'string'
+						? metaComponent
+						: typeof metaComponent === 'function'
+							? (metaComponent as Function & { displayName?: string }).displayName || (metaComponent as Function).name
+							: undefined;
+
 				const id = entry.id.split('--')[0];
 				const title = entry.title.split('/').at(-1)!.replace(/\s+/g, '');
 
@@ -263,8 +375,9 @@ export const manifests: PresetPropertyFn<'experimental_manifests'> = async (
 				const stories = extractStories(
 					csf,
 					componentName,
-					manifestEntries,
-					compodocDoc
+					entries,
+					compodocDoc,
+					selectorPrefix
 				);
 
 				// Build the base manifest
@@ -327,4 +440,4 @@ export const manifests: PresetPropertyFn<'experimental_manifests'> = async (
 			),
 		},
 	};
-};
+});

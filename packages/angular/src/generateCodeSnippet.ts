@@ -1,6 +1,10 @@
 import type { CsfFile } from 'storybook/internal/csf-tools';
 import type { CompodocDocObj } from './compodocReader.js';
 
+export interface GenerateAngularSnippetOptions {
+	selectorPrefix?: string;
+}
+
 /**
  * Generate an Angular template snippet from story args
  *
@@ -11,7 +15,8 @@ export function generateAngularSnippet(
 	csf: CsfFile,
 	storyName: string,
 	componentName: string | undefined,
-	compodocDoc: CompodocDocObj | undefined
+	compodocDoc: CompodocDocObj | undefined,
+	options: GenerateAngularSnippetOptions = {}
 ): string {
 	if (!componentName) {
 		return `// Unable to generate snippet: component name not found`;
@@ -23,8 +28,12 @@ export function generateAngularSnippet(
 	const storyArgs = storyNode ? getArgsFromStory(csf, storyName) : {};
 	const mergedArgs = { ...metaArgs, ...storyArgs };
 
-	// Generate the selector (convert PascalCase to kebab-case with 'app-' prefix)
-	const selector = getSelector(componentName, compodocDoc);
+	// Generate the selector
+	const selector = getSelector(
+		componentName,
+		compodocDoc,
+		options.selectorPrefix
+	);
 
 	// Build the template attributes
 	const attrs = buildTemplateAttributes(mergedArgs, compodocDoc);
@@ -46,22 +55,27 @@ export function generateAngularSnippet(
  */
 function getSelector(
 	componentName: string,
-	compodocDoc: CompodocDocObj | undefined
+	compodocDoc: CompodocDocObj | undefined,
+	selectorPrefix?: string
 ): string {
 	// If Compodoc has the selector, use it
 	if (compodocDoc?.selector) {
 		return compodocDoc.selector;
 	}
 
-	// Convert PascalCase to kebab-case with 'app-' prefix
-	// e.g., ButtonComponent -> app-button
+	// Convert PascalCase to kebab-case
 	const nameWithoutComponent = componentName.replace(/Component$/, '');
 	const kebabCase = nameWithoutComponent
 		.replace(/([a-z])([A-Z])/g, '$1-$2')
 		.replace(/([A-Z])([A-Z][a-z])/g, '$1-$2')
 		.toLowerCase();
 
-	return `app-${kebabCase}`;
+	const normalizedPrefix = selectorPrefix?.trim();
+	if (normalizedPrefix) {
+		return `${normalizedPrefix}-${kebabCase}`;
+	}
+
+	return kebabCase;
 }
 
 /**
