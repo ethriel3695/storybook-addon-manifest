@@ -11,6 +11,15 @@
 			"persistent": true,
 			"interruptible": true
 		},
+		"storybook": {
+			"dependsOn": ["^build"],
+			"persistent": true,
+			"cache": false
+		},
+		"build-storybook": {
+			"dependsOn": ["^build"],
+			"outputs": ["storybook-static/**"]
+		},
 		"//#format": {},
 		"//#format:check": {},
 		"//#lint": {},

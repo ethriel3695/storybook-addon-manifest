@@ -12,3 +12,5 @@ test-report.junit.xml
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+packages/sandbox/**
