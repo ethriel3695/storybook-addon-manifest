@@ -5,6 +5,7 @@ import type {
 	IndexEntry,
 	PresetPropertyFn,
 } from 'storybook/internal/types';
+import { existsSync } from 'node:fs';
 
 import { uniqBy } from 'es-toolkit/array';
 import path from 'pathe';
@@ -25,6 +26,18 @@ function readSelectorPrefix(candidate: unknown): string | undefined {
 		return undefined;
 	}
 	const value = (candidate as Record<string, unknown>).selectorPrefix;
+	if (typeof value !== 'string') {
+		return undefined;
+	}
+	const normalized = value.trim();
+	return normalized.length > 0 ? normalized : undefined;
+}
+
+function readCompodocPath(candidate: unknown): string | undefined {
+	if (!candidate || typeof candidate !== 'object') {
+		return undefined;
+	}
+	const value = (candidate as Record<string, unknown>).compodocPath;
 	if (typeof value !== 'string') {
 		return undefined;
 	}
@@ -85,6 +98,47 @@ async function resolveSelectorPrefix(): Promise<string | undefined> {
 	return undefined;
 }
 
+async function resolveConfiguredCompodocPath(): Promise<string | undefined> {
+	const configDirSetting = process.env[SELECTOR_PREFIX_CONFIG_DIR_ENV];
+	const configDirCandidate =
+		typeof configDirSetting === 'string' && configDirSetting.trim().length > 0
+			? configDirSetting.trim()
+			: DEFAULT_STORYBOOK_CONFIG_DIR;
+	const configDir = path.isAbsolute(configDirCandidate)
+		? configDirCandidate
+		: path.join(process.cwd(), configDirCandidate);
+
+	try {
+		const previewFile = loadPreviewOrConfigFile({ configDir });
+		if (!previewFile) {
+			return undefined;
+		}
+
+		const previewModule = await serverRequire(previewFile);
+		if (!previewModule) {
+			return undefined;
+		}
+
+		const moduleExports = previewModule as Record<string, unknown>;
+		const defaultExport = moduleExports.default as Record<string, unknown> | undefined;
+		const previewParameters =
+			(moduleExports.parameters as Record<string, unknown> | undefined) ??
+			(defaultExport?.parameters as Record<string, unknown> | undefined);
+
+		return (
+			readCompodocPath(previewParameters?.['angularManifest']) ??
+			readCompodocPath(moduleExports['angularManifest']) ??
+			readCompodocPath(defaultExport?.['angularManifest'])
+		);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.warn(
+			`[storybook-addon-angular-manifest] Unable to read angularManifest compodocPath from preview: ${message}`
+		);
+		return undefined;
+	}
+}
+
 /**
  * Component manifest structure - matches Storybook's internal ComponentManifest
  */
@@ -122,11 +176,13 @@ interface Manifests {
 }
 
 import {
+	findCompodocJsonFromStoryPaths,
 	type CompodocDocObj,
 	type CompodocResult,
 	getCompodocForComponent,
 	getImportTag,
 	loadCompodocJson,
+	resolveCompodocPath,
 } from './compodocReader.js';
 import { generateAngularSnippet } from './generateCodeSnippet.js';
 import { extractJSDocInfo } from './jsdocTags.js';
@@ -283,8 +339,37 @@ export const manifests = (async (
 
 	const startPerformance = performance.now();
 
+	const configuredCompodocPath = await resolveConfiguredCompodocPath();
+	const resolvedConfiguredCompodocPath =
+		typeof configuredCompodocPath === 'string'
+			? resolveCompodocPath(configuredCompodocPath)
+			: undefined;
+
+	if (resolvedConfiguredCompodocPath && !existsSync(resolvedConfiguredCompodocPath)) {
+		console.warn(
+			`[storybook-addon-angular-manifest] angularManifest.compodocPath was set but file was not found at ${resolvedConfiguredCompodocPath}. Falling back to automatic discovery.`
+		);
+	}
+
+	const storyImportPaths = entries
+		.map((entry) =>
+			entry.type === 'story'
+				? entry.importPath
+				: (entry as DocsIndexEntry).storiesImports?.[0]
+		)
+		.filter((storyImportPath): storyImportPath is string =>
+			typeof storyImportPath === 'string' && storyImportPath.length > 0
+		);
+
+	const discoveredCompodocPath =
+		findCompodocJsonFromStoryPaths(storyImportPaths) ?? undefined;
+	const compodocPathToLoad =
+		(resolvedConfiguredCompodocPath && existsSync(resolvedConfiguredCompodocPath)
+			? resolvedConfiguredCompodocPath
+			: undefined) ?? discoveredCompodocPath;
+
 	// Load Compodoc JSON once for all components
-	const compodocJson = loadCompodocJson();
+	const compodocJson = loadCompodocJson(compodocPathToLoad);
 
 	if (!compodocJson) {
 		console.warn(

@@ -20,6 +20,18 @@ import { cachedReadFileSync } from './utils.js';
 const COMPODOC_PATHS = ['documentation.json', '.compodoc/documentation.json'];
 
 /**
+ * Resolve a Compodoc path relative to cwd when a relative path is provided.
+ */
+export function resolveCompodocPath(
+	compodocPath: string,
+	cwd: string = process.cwd()
+): string {
+	return path.isAbsolute(compodocPath)
+		? compodocPath
+		: path.resolve(cwd, compodocPath);
+}
+
+/**
  * Find the Compodoc JSON file in the project
  */
 export function findCompodocJson(cwd: string = process.cwd()): string | undefined {
@@ -34,10 +46,64 @@ export function findCompodocJson(cwd: string = process.cwd()): string | undefine
 }
 
 /**
+ * Find the Compodoc JSON file by walking up from story file paths.
+ * This supports monorepos (e.g. Nx) where process.cwd() is workspace root.
+ */
+export function findCompodocJsonFromStoryPaths(
+	storyImportPaths: string[],
+	cwd: string = process.cwd()
+): string | undefined {
+	const visitedDirs = new Set<string>();
+
+	for (const storyImportPath of storyImportPaths) {
+		const absoluteStoryPath = path.isAbsolute(storyImportPath)
+			? storyImportPath
+			: path.resolve(cwd, storyImportPath);
+		let currentDir = path.dirname(absoluteStoryPath);
+
+		while (true) {
+			const relToCwd = path.relative(cwd, currentDir);
+			const isInsideCwd =
+				relToCwd === '' ||
+				(!relToCwd.startsWith('..') && !path.isAbsolute(relToCwd));
+
+			if (!isInsideCwd) {
+				break;
+			}
+
+			if (!visitedDirs.has(currentDir)) {
+				visitedDirs.add(currentDir);
+				const found = findCompodocJson(currentDir);
+				if (found) {
+					return found;
+				}
+			}
+
+			if (relToCwd === '') {
+				break;
+			}
+
+			const parentDir = path.dirname(currentDir);
+			if (parentDir === currentDir) {
+				break;
+			}
+			currentDir = parentDir;
+		}
+	}
+
+	return undefined;
+}
+
+/**
  * Load and parse the Compodoc JSON file
  */
-export function loadCompodocJson(compodocPath?: string): CompodocJson | undefined {
-	const filePath = compodocPath ?? findCompodocJson();
+export function loadCompodocJson(
+	compodocPath?: string,
+	cwd: string = process.cwd()
+): CompodocJson | undefined {
+	const filePath = compodocPath
+		? resolveCompodocPath(compodocPath, cwd)
+		: findCompodocJson(cwd);
 
 	if (!filePath) {
 		return undefined;

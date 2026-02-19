@@ -35,10 +35,12 @@ export type {
 // Compodoc utilities
 export {
 	findCompodocJson,
+	findCompodocJsonFromStoryPaths,
 	loadCompodocJson,
 	findComponentByName,
 	getCompodocForComponent,
 	getImportTag,
+	resolveCompodocPath,
 } from './compodocReader.js';
 
 // Code snippet generation
