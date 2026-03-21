@@ -46,12 +46,39 @@ export default {
 };
 ```
 
+If you are using `@storybook/addon-mcp` docs tools, enable the manifest route with the flag that matches your Storybook version:
+
+```ts
+// .storybook/main.ts
+export default {
+  features: {
+    // Storybook 10.2.x
+    experimentalComponentsManifest: true,
+    // Storybook 10.3+
+    // componentsManifest: true,
+  },
+};
+```
+
 ### Addon Order
 
 The order of addons matters:
 1. **storybook-addon-angular-manifest** - Generates component manifests
 2. **@storybook/addon-docs** - Attaches MDX documentation to components
 3. **@storybook/addon-mcp** - Exposes manifests via MCP for AI tools
+
+### Story requirements
+
+This addon requires `meta.component` so it can resolve the Angular component name during CSF parsing:
+
+```ts
+export default {
+  title: 'Example/Button',
+  component: ButtonComponent,
+};
+```
+
+If `meta.component` is missing, the manifest entry is generated with an error and MCP tooling will not have reliable component metadata.
 
 ### Configuring a selector prefix
 
@@ -84,6 +111,31 @@ export const parameters = {
 ```
 
 `compodocPath` may be relative to the workspace root or absolute.
+
+### Configuring `@storybook/addon-mcp` compatibility
+
+Current versions of `@storybook/mcp` format `get-documentation` from `reactDocgen` or `reactDocgenTypescript`. Angular `compodocData` is preserved in `/manifests/components.json`, but it is not rendered directly by those MCP docs tools yet.
+
+To improve the current docs output without changing the base manifest shape for every consumer, you can opt into a compatibility layer:
+
+```ts
+// .storybook/preview.ts
+export const parameters = {
+  angularManifest: {
+    addonMcpCompatibility: true,
+  },
+};
+```
+
+This works with the standard Angular docs setup in `.storybook/preview.ts`, including files that import Compodoc JSON for `setCompodocJson(...)`. You do not need a separate preview file just for `angularManifest` settings.
+
+When enabled, the addon:
+
+- Synthesizes `reactDocgen.props` from Angular inputs so `get-documentation` can render them under `## Props`
+- Appends an `## Outputs` section to the component description using Compodoc outputs
+- Leaves `compodocData` unchanged
+
+This mode is intentionally temporary and opt-in. It exists to improve current `@storybook/addon-mcp` docs output and is not the canonical Angular manifest contract.
 
 ## How It Works
 
@@ -201,6 +253,47 @@ Make sure your component is:
 1. Included in the `tsconfig.json` used with Compodoc
 2. Properly decorated with `@Component` or `@Directive`
 3. Exported from a module
+
+### MCP docs tools show stories but not Angular inputs
+
+If `list-all-documentation` works but `get-documentation` only shows snippets, enable the compatibility flag:
+
+```ts
+export const parameters = {
+  angularManifest: {
+    addonMcpCompatibility: true,
+  },
+};
+```
+
+This keeps the Angular manifest intact while also emitting a `reactDocgen`-compatible view of your inputs for current MCP docs tooling.
+
+### Manifest routes do not exist with `@storybook/addon-mcp`
+
+The required Storybook feature flag depends on your Storybook version:
+
+- Storybook 10.2.x: `features.experimentalComponentsManifest = true`
+- Storybook 10.3+: `features.componentsManifest = true`
+
+`@storybook/addon-mcp` 0.3.4 docs reference the renamed `componentsManifest` flag, but Storybook 10.2.x still uses `experimentalComponentsManifest`.
+
+`@storybook/addon-mcp` also detects manifest availability when Storybook starts. If you upgrade this addon or change manifest-related configuration, restart Storybook so the MCP docs tools can be re-registered.
+
+### Self-signed HTTPS certificates break manifest fetching
+
+`@storybook/mcp` fetches `/manifests/components.json` from the running Storybook origin with Node's built-in `fetch()`. In enterprise environments with self-signed certificates, that request can fail unless the certificate is trusted by Node.
+
+The supported workaround is to set `NODE_EXTRA_CA_CERTS` before starting Storybook:
+
+```bash
+NODE_EXTRA_CA_CERTS=/path/to/root-ca.pem npm run storybook
+```
+
+This behavior lives downstream in `@storybook/mcp`, so this addon documents the workaround but does not override TLS verification itself.
+
+### `meta.component` is missing
+
+Every story meta must include `component:`. Without it, the addon cannot resolve the Angular component name via CSF parsing, and manifest generation falls back to an error entry.
 
 ### Manifest not updating
 

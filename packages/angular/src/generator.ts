@@ -13,12 +13,18 @@ import path from 'pathe';
 const SELECTOR_PREFIX_CONFIG_DIR_ENV = 'STORYBOOK_MANIFEST_CONFIG_DIR';
 const DEFAULT_STORYBOOK_CONFIG_DIR = '.storybook';
 
-let cachedSelectorPrefix: string | null = null;
-let selectorPrefixLoaded = false;
+interface AngularManifestPreviewConfig {
+	selectorPrefix?: string;
+	compodocPath?: string;
+	addonMcpCompatibility: boolean;
+}
 
-function resetSelectorPrefixCache() {
-	cachedSelectorPrefix = null;
-	selectorPrefixLoaded = false;
+let cachedAngularManifestConfig: AngularManifestPreviewConfig | null = null;
+let angularManifestConfigLoaded = false;
+
+function resetAngularManifestConfigCache() {
+	cachedAngularManifestConfig = null;
+	angularManifestConfigLoaded = false;
 }
 
 function readSelectorPrefix(candidate: unknown): string | undefined {
@@ -45,60 +51,251 @@ function readCompodocPath(candidate: unknown): string | undefined {
 	return normalized.length > 0 ? normalized : undefined;
 }
 
-async function resolveSelectorPrefix(): Promise<string | undefined> {
-	if (selectorPrefixLoaded) {
-		return cachedSelectorPrefix ?? undefined;
+function readAddonMcpCompatibility(candidate: unknown): boolean | undefined {
+	if (!candidate || typeof candidate !== 'object') {
+		return undefined;
+	}
+	const value = (candidate as Record<string, unknown>).addonMcpCompatibility;
+	return typeof value === 'boolean' ? value : undefined;
+}
+
+function findObjectPropertyValueStart(
+	source: string,
+	propertyName: string
+): number | undefined {
+	const propertyPattern = new RegExp(
+		`(?:^|[,{]\\s*)(?:${propertyName}|["']${propertyName}["'])\\s*:\\s*`,
+		'gm'
+	);
+
+	let match = propertyPattern.exec(source);
+	while (match) {
+		const valueStart = match.index + match[0].length;
+		if (valueStart < source.length) {
+			return valueStart;
+		}
+		match = propertyPattern.exec(source);
 	}
 
-	selectorPrefixLoaded = true;
-
-	const configDirSetting = process.env[SELECTOR_PREFIX_CONFIG_DIR_ENV];
-	const configDirCandidate =
-		typeof configDirSetting === 'string' && configDirSetting.trim().length > 0
-			? configDirSetting.trim()
-			: DEFAULT_STORYBOOK_CONFIG_DIR;
-	const configDir = path.isAbsolute(configDirCandidate)
-		? configDirCandidate
-		: path.join(process.cwd(), configDirCandidate);
-
-	try {
-		const previewFile = loadPreviewOrConfigFile({ configDir });
-		if (!previewFile) {
-			return undefined;
-		}
-
-		const previewModule = await serverRequire(previewFile);
-		if (!previewModule) {
-			return undefined;
-		}
-
-		const moduleExports = previewModule as Record<string, unknown>;
-		const defaultExport = moduleExports.default as Record<string, unknown> | undefined;
-		const previewParameters =
-			(moduleExports.parameters as Record<string, unknown> | undefined) ??
-			(defaultExport?.parameters as Record<string, unknown> | undefined);
-
-		const prefix =
-			readSelectorPrefix(previewParameters?.['angularManifest']) ??
-			readSelectorPrefix(moduleExports['angularManifest']) ??
-			readSelectorPrefix(defaultExport?.['angularManifest']);
-
-		if (prefix) {
-			cachedSelectorPrefix = prefix;
-			return prefix;
-		}
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		console.warn(
-			`[storybook-addon-angular-manifest] Unable to read angularManifest selectorPrefix from preview: ${message}`
-		);
-	}
-
-	cachedSelectorPrefix = null;
 	return undefined;
 }
 
-async function resolveConfiguredCompodocPath(): Promise<string | undefined> {
+function readBalancedObjectLiteral(
+	source: string,
+	startIndex: number
+): string | undefined {
+	if (source[startIndex] !== '{') {
+		return undefined;
+	}
+
+	let depth = 0;
+
+	for (let index = startIndex; index < source.length; index += 1) {
+		const char = source[index];
+		const nextChar = source[index + 1];
+
+		if (char === '"' || char === "'" || char === '`') {
+			const quote = char;
+			index += 1;
+			while (index < source.length) {
+				const current = source[index];
+				if (current === '\\') {
+					index += 2;
+					continue;
+				}
+				if (current === quote) {
+					break;
+				}
+				index += 1;
+			}
+			continue;
+		}
+
+		if (char === '/' && nextChar === '/') {
+			index += 2;
+			while (index < source.length && source[index] !== '\n') {
+				index += 1;
+			}
+			continue;
+		}
+
+		if (char === '/' && nextChar === '*') {
+			index += 2;
+			while (index < source.length) {
+				if (source[index] === '*' && source[index + 1] === '/') {
+					index += 1;
+					break;
+				}
+				index += 1;
+			}
+			continue;
+		}
+
+		if (char === '{') {
+			depth += 1;
+			continue;
+		}
+
+		if (char === '}') {
+			depth -= 1;
+			if (depth === 0) {
+				return source.slice(startIndex, index + 1);
+			}
+		}
+	}
+
+	return undefined;
+}
+
+function parseSimpleStringLiteral(source: string, startIndex: number): string | undefined {
+	const quote = source[startIndex];
+	if (quote !== '"' && quote !== "'" && quote !== '`') {
+		return undefined;
+	}
+
+	let result = '';
+
+	for (let index = startIndex + 1; index < source.length; index += 1) {
+		const char = source[index];
+
+		if (char === '\\') {
+			const escaped = source[index + 1];
+			if (escaped === undefined) {
+				return undefined;
+			}
+
+			switch (escaped) {
+				case 'n':
+					result += '\n';
+					break;
+				case 'r':
+					result += '\r';
+					break;
+				case 't':
+					result += '\t';
+					break;
+				case '\\':
+					result += '\\';
+					break;
+				case '"':
+					result += '"';
+					break;
+				case "'":
+					result += "'";
+					break;
+				case '`':
+					result += '`';
+					break;
+				default:
+					result += escaped;
+					break;
+			}
+
+			index += 1;
+			continue;
+		}
+
+		if (char === quote) {
+			return result;
+		}
+
+		result += char;
+	}
+
+	return undefined;
+}
+
+function readStringPropertyFromObjectLiteral(
+	objectLiteral: string,
+	propertyName: string
+): string | undefined {
+	const valueStart = findObjectPropertyValueStart(objectLiteral, propertyName);
+	if (valueStart === undefined) {
+		return undefined;
+	}
+
+	const parsed = parseSimpleStringLiteral(objectLiteral, valueStart);
+	if (typeof parsed !== 'string') {
+		return undefined;
+	}
+
+	const normalized = parsed.trim();
+	return normalized.length > 0 ? normalized : undefined;
+}
+
+function readBooleanPropertyFromObjectLiteral(
+	objectLiteral: string,
+	propertyName: string
+): boolean | undefined {
+	const valueStart = findObjectPropertyValueStart(objectLiteral, propertyName);
+	if (valueStart === undefined) {
+		return undefined;
+	}
+
+	if (objectLiteral.startsWith('true', valueStart)) {
+		return true;
+	}
+
+	if (objectLiteral.startsWith('false', valueStart)) {
+		return false;
+	}
+
+	return undefined;
+}
+
+function loadAngularManifestConfigFromPreviewSource(
+	previewFile: string
+): AngularManifestPreviewConfig | undefined {
+	try {
+		const previewSource = cachedReadFileSync(previewFile, 'utf-8') as string;
+		const angularManifestValueStart = findObjectPropertyValueStart(
+			previewSource,
+			'angularManifest'
+		);
+
+		if (
+			angularManifestValueStart === undefined ||
+			previewSource[angularManifestValueStart] !== '{'
+		) {
+			return undefined;
+		}
+
+		const angularManifestObjectLiteral = readBalancedObjectLiteral(
+			previewSource,
+			angularManifestValueStart
+		);
+
+		if (!angularManifestObjectLiteral) {
+			return undefined;
+		}
+
+		return {
+			selectorPrefix: readStringPropertyFromObjectLiteral(
+				angularManifestObjectLiteral,
+				'selectorPrefix'
+			),
+			compodocPath: readStringPropertyFromObjectLiteral(
+				angularManifestObjectLiteral,
+				'compodocPath'
+			),
+			addonMcpCompatibility:
+				readBooleanPropertyFromObjectLiteral(
+					angularManifestObjectLiteral,
+					'addonMcpCompatibility'
+				) ?? false,
+		};
+	} catch {
+		return undefined;
+	}
+}
+
+async function resolveAngularManifestConfig(): Promise<AngularManifestPreviewConfig> {
+	if (angularManifestConfigLoaded) {
+		return cachedAngularManifestConfig ?? { addonMcpCompatibility: false };
+	}
+
+	angularManifestConfigLoaded = true;
+
 	const configDirSetting = process.env[SELECTOR_PREFIX_CONFIG_DIR_ENV];
 	const configDirCandidate =
 		typeof configDirSetting === 'string' && configDirSetting.trim().length > 0
@@ -111,12 +308,29 @@ async function resolveConfiguredCompodocPath(): Promise<string | undefined> {
 	try {
 		const previewFile = loadPreviewOrConfigFile({ configDir });
 		if (!previewFile) {
-			return undefined;
+			cachedAngularManifestConfig = { addonMcpCompatibility: false };
+			return cachedAngularManifestConfig;
 		}
 
-		const previewModule = await serverRequire(previewFile);
+		let previewModule: unknown;
+		try {
+			previewModule = await serverRequire(previewFile);
+		} catch (error) {
+			const fallbackConfig =
+				loadAngularManifestConfigFromPreviewSource(previewFile);
+			if (fallbackConfig) {
+				cachedAngularManifestConfig = fallbackConfig;
+				return fallbackConfig;
+			}
+
+			throw error;
+		}
+
 		if (!previewModule) {
-			return undefined;
+			const fallbackConfig =
+				loadAngularManifestConfigFromPreviewSource(previewFile);
+			cachedAngularManifestConfig = fallbackConfig ?? { addonMcpCompatibility: false };
+			return cachedAngularManifestConfig;
 		}
 
 		const moduleExports = previewModule as Record<string, unknown>;
@@ -125,18 +339,45 @@ async function resolveConfiguredCompodocPath(): Promise<string | undefined> {
 			(moduleExports.parameters as Record<string, unknown> | undefined) ??
 			(defaultExport?.parameters as Record<string, unknown> | undefined);
 
-		return (
-			readCompodocPath(previewParameters?.['angularManifest']) ??
-			readCompodocPath(moduleExports['angularManifest']) ??
-			readCompodocPath(defaultExport?.['angularManifest'])
-		);
+		const angularManifestConfig: AngularManifestPreviewConfig = {
+			selectorPrefix:
+				readSelectorPrefix(previewParameters?.['angularManifest']) ??
+				readSelectorPrefix(moduleExports['angularManifest']) ??
+				readSelectorPrefix(defaultExport?.['angularManifest']),
+			compodocPath:
+				readCompodocPath(previewParameters?.['angularManifest']) ??
+				readCompodocPath(moduleExports['angularManifest']) ??
+				readCompodocPath(defaultExport?.['angularManifest']),
+			addonMcpCompatibility:
+				readAddonMcpCompatibility(previewParameters?.['angularManifest']) ??
+				readAddonMcpCompatibility(moduleExports['angularManifest']) ??
+				readAddonMcpCompatibility(defaultExport?.['angularManifest']) ??
+				false,
+		};
+
+		cachedAngularManifestConfig = angularManifestConfig;
+		return angularManifestConfig;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		console.warn(
-			`[storybook-addon-angular-manifest] Unable to read angularManifest compodocPath from preview: ${message}`
+			`[storybook-addon-angular-manifest] Unable to read angularManifest settings from preview: ${message}`
 		);
-		return undefined;
 	}
+
+	cachedAngularManifestConfig = { addonMcpCompatibility: false };
+	return cachedAngularManifestConfig;
+}
+
+async function resolveSelectorPrefix(): Promise<string | undefined> {
+	return (await resolveAngularManifestConfig()).selectorPrefix;
+}
+
+async function resolveConfiguredCompodocPath(): Promise<string | undefined> {
+	return (await resolveAngularManifestConfig()).compodocPath;
+}
+
+async function resolveAddonMcpCompatibility(): Promise<boolean> {
+	return (await resolveAngularManifestConfig()).addonMcpCompatibility;
 }
 
 /**
@@ -157,6 +398,20 @@ interface ComponentManifest {
 		error?: { name: string; message: string };
 	}>;
 	jsDocTags: Record<string, string[]>;
+	reactDocgen?: {
+		props: Record<
+			string,
+			{
+				description?: string;
+				required?: boolean;
+				defaultValue?: { value: string };
+				tsType?: {
+					name: string;
+					raw?: string;
+				};
+			}
+		>;
+	};
 	error?: { name: string; message: string };
 }
 
@@ -293,6 +548,83 @@ function extractComponentDescription(
 	};
 }
 
+function getCompodocText(
+	description: string | undefined,
+	rawdescription: string | undefined
+) {
+	return description?.trim() || rawdescription?.trim() || undefined;
+}
+
+function buildAddonMcpReactDocgen(compodocDoc: CompodocDocObj | undefined) {
+	if (!compodocDoc || compodocDoc.inputs.length === 0) {
+		return undefined;
+	}
+
+	return {
+		props: Object.fromEntries(
+			compodocDoc.inputs.map((input) => [
+				input.name,
+				{
+					description: getCompodocText(
+						input.description,
+						input.rawdescription
+					),
+					required: !input.optional,
+					defaultValue:
+						typeof input.defaultValue === 'string'
+							? { value: input.defaultValue }
+							: undefined,
+					tsType: {
+						name: input.type || 'any',
+						raw: input.type || 'any',
+					},
+				},
+			])
+		),
+	};
+}
+
+function buildOutputsSection(compodocDoc: CompodocDocObj | undefined) {
+	if (!compodocDoc || compodocDoc.outputs.length === 0) {
+		return undefined;
+	}
+
+	const lines = compodocDoc.outputs.map((output) => {
+		const outputDescription = getCompodocText(
+			output.description,
+			output.rawdescription
+		);
+		let line = `- \`${output.name}\``;
+
+		if (output.type) {
+			line += ` (\`${output.type}\`)`;
+		}
+
+		if (outputDescription) {
+			line += `: ${outputDescription}`;
+		}
+
+		return line;
+	});
+
+	return ['## Outputs', '', ...lines].join('\n');
+}
+
+function appendOutputsSection(
+	description: string | undefined,
+	compodocDoc: CompodocDocObj | undefined
+) {
+	const outputsSection = buildOutputsSection(compodocDoc);
+	if (!outputsSection) {
+		return description?.trim() || undefined;
+	}
+
+	const normalizedDescription = description?.trim();
+	return normalizedDescription
+		? `${normalizedDescription}\n\n${outputsSection}`
+		: outputsSection;
+}
+
 /**
  * Generate import statement for an Angular component
  */
@@ -329,13 +661,20 @@ export const manifests = (async (
 
 	// Some callers (e.g. addon-mcp capability probes) invoke the preset with an
 	// empty manifest list or undefined value to check whether manifests are
-	// supported. Skip generation in those scenarios.
+	// supported. Return an empty components shell so capability probes can detect
+	// that component manifests are available without requiring real story entries.
 	if (entries.length === 0) {
-		return existingManifests;
+		return {
+			...existingManifests,
+			components: existingManifests.components ?? {
+				v: 0,
+				components: {},
+			},
+		};
 	}
 
 	invalidateCache();
-	resetSelectorPrefixCache();
+	resetAngularManifestConfigCache();
 
 	const startPerformance = performance.now();
 
@@ -405,6 +744,7 @@ export const manifests = (async (
 	);
 
 	const selectorPrefix = await resolveSelectorPrefix();
+	const addonMcpCompatibility = await resolveAddonMcpCompatibility();
 
 	const components = entriesByUniqueComponent
 		.map((entry): AngularComponentManifest | undefined => {
@@ -488,16 +828,29 @@ export const manifests = (async (
 				}
 
 				// Get description from CSF meta and Compodoc
-				const { description, summary, jsDocTags } = extractComponentDescription(
+				const {
+					description: baseDescription,
+					summary: baseSummary,
+					jsDocTags,
+				} = extractComponentDescription(
 					csf,
 					compodocDoc
 				);
+				const description = addonMcpCompatibility
+					? appendOutputsSection(baseDescription, compodocDoc)
+					: baseDescription;
+				const summary = addonMcpCompatibility
+					? baseSummary ?? baseDescription?.trim()
+					: baseSummary;
 
 				return {
 					...base,
 					description,
 					summary,
 					compodocData: compodocDoc,
+					reactDocgen: addonMcpCompatibility
+						? buildAddonMcpReactDocgen(compodocDoc)
+						: undefined,
 					jsDocTags,
 					error:
 						compodocResult.type === 'error' ? compodocResult.error : undefined,
