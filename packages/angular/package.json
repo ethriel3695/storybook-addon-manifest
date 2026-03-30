@@ -1,6 +1,6 @@
 {
 	"name": "storybook-addon-angular-manifest",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "Storybook addon for Angular component manifest generation with Compodoc integration",
 	"keywords": [
 		"storybook-addon",

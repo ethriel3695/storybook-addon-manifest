@@ -63,7 +63,7 @@ function createCompodocComponent({
 	};
 }
 
-async function generateComponentManifest({
+async function generateManifestResult({
 	storySource,
 	previewConfig,
 	previewFile,
@@ -123,6 +123,13 @@ async function generateComponentManifest({
 		}
 	)) as any;
 
+	return result;
+}
+
+async function generateComponentManifest(
+	options: Parameters<typeof generateManifestResult>[0]
+) {
+	const result = await generateManifestResult(options);
 	return result.components.components['example-button'];
 }
 
@@ -189,6 +196,26 @@ describe.sequential('generator addon-mcp compatibility', () => {
 		expect(component.reactDocgen).toBeUndefined();
 		expect(component.description).toBe('Base button description.');
 		expect(component.summary).toBeUndefined();
+	});
+
+	it('emits compodoc manifest metadata for downstream consumers', async () => {
+		const result = await generateManifestResult({
+			storySource: `
+				class ButtonComponent {}
+
+				export default {
+					title: 'Example/Button',
+					component: ButtonComponent,
+				};
+
+				export const Primary = {};
+			`,
+		});
+
+		expect(result.components.meta).toEqual({
+			docgen: 'compodoc',
+			durationMs: expect.any(Number),
+		});
 	});
 
 	it('emits reactDocgen props and appends outputs when compatibility mode is enabled', async () => {

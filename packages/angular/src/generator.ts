@@ -422,6 +422,10 @@ interface Manifests {
 	components?: {
 		v: number;
 		components: Record<string, ComponentManifest>;
+		meta?: {
+			docgen: 'compodoc';
+			durationMs: number;
+		};
 	};
 	docs?: {
 		v: number;
@@ -876,6 +880,10 @@ export const manifests = (async (
 			components: Object.fromEntries(
 				components.map((component) => [component.id, component])
 			),
+			meta: {
+				docgen: 'compodoc',
+				durationMs: Math.round(performance.now() - startPerformance),
+			},
 		},
 	};
 });
