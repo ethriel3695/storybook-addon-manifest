@@ -97,6 +97,7 @@ function normalizeComponentDoc(
 
 	const base: CompodocDocObj = {
 		name: component.name,
+		selector: 'selector' in component ? component.selector : undefined,
 		description: component.description,
 		rawdescription: component.rawdescription,
 		type: type as CompodocDocObj['type'],

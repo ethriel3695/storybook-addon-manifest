@@ -60,6 +60,7 @@ export interface Pipe {
 
 export interface Directive {
 	name: string;
+	selector?: string;
 	type: 'directive' | 'component';
 	propertiesClass: Property[];
 	inputsClass: Property[];
